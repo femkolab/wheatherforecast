@@ -1,97 +1,25 @@
 "use client";
-
 import { FormEvent, useEffect, useState } from "react";
 
-type Day = { date: string; code: number; max: number; min: number; rain: number };
-type Weather = { city: string; country: string; temperature: number; apparent: number; wind: number; code: number; days: Day[] };
+const cities = ["Adana","Adıyaman","Afyonkarahisar","Ağrı","Aksaray","Amasya","Ankara","Antalya","Ardahan","Artvin","Aydın","Balıkesir","Bartın","Batman","Bayburt","Bilecik","Bingöl","Bitlis","Bolu","Burdur","Bursa","Çanakkale","Çankırı","Çorum","Denizli","Diyarbakır","Düzce","Edirne","Elazığ","Erzincan","Erzurum","Eskişehir","Gaziantep","Giresun","Gümüşhane","Hakkari","Hatay","Iğdır","Isparta","İstanbul","İzmir","Kahramanmaraş","Karabük","Karaman","Kars","Kastamonu","Kayseri","Kırıkkale","Kırklareli","Kırşehir","Kilis","Kocaeli","Konya","Kütahya","Malatya","Manisa","Mardin","Mersin","Muğla","Muş","Nevşehir","Niğde","Ordu","Osmaniye","Rize","Sakarya","Samsun","Siirt","Sinop","Sivas","Şanlıurfa","Şırnak","Tekirdağ","Tokat","Trabzon","Tunceli","Uşak","Van","Yalova","Yozgat","Zonguldak"];
+type Row={date:string;max:number;min:number;mean:number;humidity:number};
+const iso=(d:Date)=>d.toISOString().slice(0,10);
+const endDefault=()=>{const d=new Date();d.setDate(d.getDate()-5);return iso(d)};
+const startDefault=()=>{const d=new Date();d.setDate(d.getDate()-11);return iso(d)};
 
-const weatherText: Record<number, string> = {
-  0: "Clear sky", 1: "Mostly clear", 2: "Partly cloudy", 3: "Overcast",
-  45: "Foggy", 48: "Icy fog", 51: "Light drizzle", 53: "Drizzle", 55: "Heavy drizzle",
-  61: "Light rain", 63: "Rain", 65: "Heavy rain", 71: "Light snow", 73: "Snow",
-  75: "Heavy snow", 80: "Rain showers", 81: "Showers", 82: "Heavy showers",
-  95: "Thunderstorm", 96: "Storm & hail", 99: "Storm & hail",
-};
-
-function iconFor(code: number) {
-  if (code === 0) return "☀";
-  if (code <= 2) return "◑";
-  if (code <= 48) return "☁";
-  if (code >= 71 && code <= 75) return "❄";
-  if (code >= 95) return "ϟ";
-  return "☂";
+async function getHistory(city:string,start:string,end:string){
+ const g=await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=tr&format=json&countryCode=TR`).then(r=>r.json());
+ const p=g.results?.[0]; if(!p) throw Error("Şehir bulunamadı.");
+ const q=new URLSearchParams({latitude:p.latitude,longitude:p.longitude,start_date:start,end_date:end,timezone:"Europe/Istanbul",daily:"temperature_2m_max,temperature_2m_min,temperature_2m_mean",hourly:"relative_humidity_2m"});
+ const w=await fetch(`https://archive-api.open-meteo.com/v1/archive?${q}`).then(r=>r.json()); if(w.error) throw Error(w.reason||"Veri alınamadı.");
+ return w.daily.time.map((date:string,i:number)=>{const hs=w.hourly.relative_humidity_2m.slice(i*24,(i+1)*24).filter((x:number)=>x!=null);return{date,max:Math.round(w.daily.temperature_2m_max[i]),min:Math.round(w.daily.temperature_2m_min[i]),mean:Math.round(w.daily.temperature_2m_mean[i]),humidity:Math.round(hs.reduce((a:number,b:number)=>a+b,0)/hs.length)}}) as Row[];
 }
-
-async function loadWeather(city: string): Promise<Weather> {
-  const geo = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=en&format=json`);
-  const place = (await geo.json()).results?.[0];
-  if (!place) throw new Error("We couldn’t find that place. Try a nearby city.");
-  const params = new URLSearchParams({
-    latitude: String(place.latitude), longitude: String(place.longitude), timezone: "auto",
-    current: "temperature_2m,apparent_temperature,weather_code,wind_speed_10m",
-    daily: "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
-    forecast_days: "6",
-  });
-  const data = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`).then((r) => r.json());
-  return {
-    city: place.name, country: place.country_code, temperature: Math.round(data.current.temperature_2m),
-    apparent: Math.round(data.current.apparent_temperature), wind: Math.round(data.current.wind_speed_10m),
-    code: data.current.weather_code,
-    days: data.daily.time.slice(1).map((date: string, i: number) => ({
-      date, code: data.daily.weather_code[i + 1], max: Math.round(data.daily.temperature_2m_max[i + 1]),
-      min: Math.round(data.daily.temperature_2m_min[i + 1]), rain: data.daily.precipitation_probability_max[i + 1] ?? 0,
-    })),
-  };
-}
-
-export default function Home() {
-  const [query, setQuery] = useState("Izmir");
-  const [weather, setWeather] = useState<Weather | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  async function search(city: string) {
-    setLoading(true); setError("");
-    try { setWeather(await loadWeather(city)); }
-    catch (e) { setError(e instanceof Error ? e.message : "Weather data is unavailable right now."); }
-    finally { setLoading(false); }
-  }
-
-  useEffect(() => { search("Izmir"); }, []);
-  function submit(e: FormEvent) { e.preventDefault(); if (query.trim()) search(query.trim()); }
-
-  return (
-    <main>
-      <nav><a className="brand" href="#">Morrow<span>°</span></a><span className="nav-note">Weather, made simple.</span></nav>
-      <section className="hero">
-        <p className="eyebrow">YOUR DAILY OUTLOOK</p>
-        <h1>Know what’s<br />coming <em>next.</em></h1>
-        <form onSubmit={submit}>
-          <label htmlFor="city">Search a city</label>
-          <div className="search-row"><input id="city" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="City name" /><button disabled={loading}>{loading ? "Checking…" : "See forecast →"}</button></div>
-        </form>
-      </section>
-
-      <section className="weather-shell" aria-live="polite">
-        {error && <div className="message">{error}</div>}
-        {!error && weather && <>
-          <div className="current">
-            <div><p className="place">{weather.city}, {weather.country}</p><p className="condition">{weatherText[weather.code] ?? "Changing skies"}</p></div>
-            <div className="current-temp"><span className="weather-icon">{iconFor(weather.code)}</span><strong>{weather.temperature}°</strong></div>
-            <div className="details"><span>Feels like <b>{weather.apparent}°</b></span><span>Wind <b>{weather.wind} km/h</b></span></div>
-          </div>
-          <div className="forecast">
-            {weather.days.map((day) => <article key={day.date}>
-              <p className="day">{new Intl.DateTimeFormat("en", { weekday: "short" }).format(new Date(`${day.date}T12:00:00`))}</p>
-              <span className="day-icon">{iconFor(day.code)}</span>
-              <p className="temps"><b>{day.max}°</b> <span>{day.min}°</span></p>
-              <p className="rain">{day.rain}% rain</p>
-            </article>)}
-          </div>
-        </>}
-        {loading && !weather && <div className="message">Reading the skies…</div>}
-      </section>
-      <footer><span>Live data from Open-Meteo</span><span>Forecasts update automatically</span></footer>
-    </main>
-  );
-}
+export default function Home(){
+ const[city,setCity]=useState("İzmir"),[start,setStart]=useState(startDefault()),[end,setEnd]=useState(endDefault()),[rows,setRows]=useState<Row[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState("");
+ async function load(){setLoading(true);setError("");try{setRows(await getHistory(city,start,end))}catch(e){setError(e instanceof Error?e.message:"Veri alınamadı.")}finally{setLoading(false)}}
+ useEffect(()=>{load()},[]); function submit(e:FormEvent){e.preventDefault();load()}
+ const avg=rows.length?Math.round(rows.reduce((a,r)=>a+r.mean,0)/rows.length):0,hum=rows.length?Math.round(rows.reduce((a,r)=>a+r.humidity,0)/rows.length):0;
+ return <main><nav><div className="brand">İklim<span>TR</span></div><small>Tarihsel hava arşivi</small></nav><header><p className="eyebrow">TÜRKİYE • GEÇMİŞ HAVA VERİLERİ</p><h1>Şehrin geçmişini<br/><em>havadan oku.</em></h1><p className="intro">Türkiye’nin 81 ili için geçmiş sıcaklık ve nem değerlerini karşılaştırın.</p></header>
+ <form onSubmit={submit} className="filters"><label>Şehir<select value={city} onChange={e=>setCity(e.target.value)}>{cities.map(c=><option key={c}>{c}</option>)}</select></label><label>Başlangıç<input type="date" value={start} max={end} onChange={e=>setStart(e.target.value)}/></label><label>Bitiş<input type="date" value={end} min={start} max={endDefault()} onChange={e=>setEnd(e.target.value)}/></label><button disabled={loading}>{loading?"Yükleniyor…":"Verileri getir →"}</button></form>
+ {error?<section className="empty">{error}</section>:<><section className="summary"><div><small>SEÇİLİ ŞEHİR</small><strong>{city}</strong><span>{start} — {end}</span></div><div><small>ORT. SICAKLIK</small><strong>{avg}°C</strong><span>Günlük ortalama</span></div><div><small>ORT. NEM</small><strong>%{hum}</strong><span>24 saat ortalaması</span></div><div><small>KAYIT</small><strong>{rows.length}</strong><span>Günlük veri</span></div></section><section className="table-wrap"><table><thead><tr><th>Tarih</th><th>En düşük</th><th>Ortalama</th><th>En yüksek</th><th>Ort. nem</th><th>Nem göstergesi</th></tr></thead><tbody>{rows.map(r=><tr key={r.date}><td>{new Intl.DateTimeFormat("tr-TR",{day:"numeric",month:"long",year:"numeric"}).format(new Date(r.date+"T12:00"))}</td><td>{r.min}°C</td><td><b>{r.mean}°C</b></td><td>{r.max}°C</td><td><b>%{r.humidity}</b></td><td><i className="bar"><i style={{width:r.humidity+"%"}}/></i></td></tr>)}</tbody></table></section></>}
+ <footer>Veri kaynağı: Open-Meteo Historical Weather API</footer></main>}
