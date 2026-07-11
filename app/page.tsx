@@ -45,7 +45,7 @@ async function loadWeather(city: string): Promise<Weather> {
 }
 
 export default function Home() {
-  const [query, setQuery] = useState("Istanbul");
+  const [query, setQuery] = useState("Izmir");
   const [weather, setWeather] = useState<Weather | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -57,7 +57,7 @@ export default function Home() {
     finally { setLoading(false); }
   }
 
-  useEffect(() => { search("Istanbul"); }, []);
+  useEffect(() => { search("Izmir"); }, []);
   function submit(e: FormEvent) { e.preventDefault(); if (query.trim()) search(query.trim()); }
 
   return (
