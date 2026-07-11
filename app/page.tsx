@@ -5,7 +5,7 @@ const cities = ["Adana","Adıyaman","Afyonkarahisar","Ağrı","Aksaray","Amasya"
 type Row={date:string;max:number;min:number;mean:number;humidity:number};
 const iso=(d:Date)=>d.toISOString().slice(0,10);
 const endDefault=()=>{const d=new Date();d.setDate(d.getDate()-5);return iso(d)};
-const startDefault=()=>{const d=new Date();d.setDate(d.getDate()-11);return iso(d)};
+const startDefault=()=>{const d=new Date();d.setDate(d.getDate()-5);d.setMonth(d.getMonth()-1);return iso(d)};
 
 async function getHistory(city:string,start:string,end:string){
  const g=await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=tr&format=json&countryCode=TR`).then(r=>r.json());
